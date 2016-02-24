@@ -1,12 +1,7 @@
 package com.moneydance.modules.features.mynetworth;
 
-/**
- * User: gad
- * Date: 1/27/13
- * Time: 1:55 PM
- */
 import com.moneydance.awt.*;
-import com.moneydance.apps.md.model.*;
+import com.infinitekind.moneydance.model.*;
 
 import java.io.*;
 import javax.swing.*;
@@ -16,6 +11,7 @@ import java.awt.*;
 import java.awt.event.*;
 import java.text.DecimalFormat;
 import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class AccountBalancesWindow
@@ -33,26 +29,32 @@ public class AccountBalancesWindow
     final DefaultTableModel dm;
 
     AccountsData displayedData = new AccountsData();
+    java.util.List<MyAccount> allAccounts;
+    long lastTransactionsSize;
 
-    static private boolean debug = false;
+    static private boolean debug1 = true;
     static private boolean debug2 = false;
 
     static StringBuffer myPrintBuf = new StringBuffer();
 
     static void myPrint(String format, Object... args)
     {
-//        myPrintBuf.append(String.format(format, args)).append("\n");
-        System.err.println(String.format(format, args));
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(Calendar.getInstance().getTime());
+        // myPrintBuf.append(timeStamp + " " + String.format(format, args)).append("\n");
+        System.err.println(timeStamp + " " + String.format(format, args));
     }
 
     static void myPrintDone() {
         if (myPrintBuf.length() > 0)
+        {
             System.err.print(myPrintBuf.toString());
+            myPrintBuf = new StringBuffer();
+        }
     }
 
-    static void myDebug(String format, Object... args)
+    static void myDebug1(String format, Object... args)
     {
-        if (debug)  myPrint(format, args);
+        if (debug1)  myPrint(format, args);
     }
 
     static void myDebug2(String format, Object... args)
@@ -83,6 +85,7 @@ public class AccountBalancesWindow
         java.util.List<MyAccount> myAccounts;
         java.util.List<Integer> dates;
         DefaultTableModel balances;
+        DefaultTableModel recursiveBalances;
 
         AccountsData() {
              clear();
@@ -92,55 +95,64 @@ public class AccountBalancesWindow
             myAccounts = new ArrayList<MyAccount>();
             dates = new ArrayList<Integer>();
             balances = new DefaultTableModel();
+            recursiveBalances = new DefaultTableModel();
         }
     }
 
-    private static boolean isMainAccount(Account a) {
-        MyAccount mya = new MyAccount(a);
-        return ((a instanceof AssetAccount)
-                || (a instanceof BankAccount)
-                || (a instanceof CreditCardAccount)
-                || (a instanceof InvestmentAccount)
-                || (a instanceof LiabilityAccount)
-                || (a instanceof LoanAccount)
-                || (a instanceof SecurityAccount)
-        );
+    private boolean isMainAccount(Account a) {
+        Account.AccountType	type = a.getAccountType();
+        return (
+                type == Account.AccountType.ASSET
+                || type == Account.AccountType.BANK
+                || type == Account.AccountType.CREDIT_CARD
+                || type == Account.AccountType.INVESTMENT
+                || type == Account.AccountType.LIABILITY
+                || type == Account.AccountType.LOAN
+                || type == Account.AccountType.SECURITY
+                );
     }
 
     private static void sortTransactions(TxnSet txnSet) {
 
         AccountUtil.sortTransactions(txnSet, AccountUtil.DATE);
     }
-
-    private static class MyAccount {
+    private class MyAccount {
         private Account account;
         private TxnSet txnSet = null;
         private int lastIndex;
         long lastBalance;
         private java.util.List<MyAccount> subAccounts = new ArrayList<MyAccount>();
-        boolean cashOnly;
 
-        public MyAccount(Account account, boolean cashOnly) {
+        public MyAccount(Account account) {
             this.account = account;
             lastBalance = account.getStartBalance();
             lastIndex = -1;
-            txnSet =  account.getRootAccount().getTransactionSet().getTransactionsForAccount(account).cloneTxns();
+            // getting transactions takes long time. Try to optimize by preparing maps of account -> transactions
+            txnSet = extension.getUnprotectedContext().getCurrentAccountBook().
+                    getTransactionSet().getTransactionsForAccount(account).cloneTxns();
             sortTransactions(txnSet);
-            if (cashOnly) {
-                this.cashOnly = true;
-            } else {
-                for (int i = 0; i < account.getSubAccountCount(); i++) {
-                    subAccounts.add(new MyAccount(account.getSubAccount(i)));
-                }
+            for (Account sa : account.getSubAccounts())
+            {
+                if (isMainAccount(sa))
+                    subAccounts.add(new MyAccount(sa));
             }
-        }
-
-        public MyAccount(Account account) {
-            this(account, false);
         }
 
         public String getAccountName() {
             return account.getAccountName();
+        }
+
+        public int getDepth() {
+            return account.getDepth();
+        }
+
+        public String getParentName() {
+            try {
+                return account.getParentAccount().getAccountName();
+            }
+            catch(Exception e) {
+                return "unknown";
+            }
         }
 
         public Account getAccount() {
@@ -148,22 +160,15 @@ public class AccountBalancesWindow
         }
 
         public String getAccountTypeName() {
-            int type = account.getAccountType();
-            if (type == Account.ACCOUNT_TYPE_ROOT) return "ROOT";
-            if (type == Account.ACCOUNT_TYPE_BANK) return "BANK";
-            if (type == Account.ACCOUNT_TYPE_CREDIT_CARD) return "CREDIT_CARD";
-            if (type == Account.ACCOUNT_TYPE_INVESTMENT) return "INVESTMENT";
-            if (type == Account.ACCOUNT_TYPE_SECURITY) return "SECURITY";
-            if (type == Account.ACCOUNT_TYPE_ASSET) return "ASSET";
-            if (type == Account.ACCOUNT_TYPE_LIABILITY) return "LIABILITY";
-            if (type == Account.ACCOUNT_TYPE_LOAN) return "LOAN";
-            if (type == Account.ACCOUNT_TYPE_EXPENSE) return "EXPENSE";
-            if (type == Account.ACCOUNT_TYPE_INCOME) return "INCOME";
-            return "unknown";
+            Account.AccountType	type = account.getAccountType();
+            try {
+                return type.name();
+            } catch (Exception e) {
+                return "unknown";
+            }
         }
 
         private long getBalanceForSecurity(int date) {
-            boolean test = true;
             long positions = 0;
             CurrencyType currencytype = account.getCurrencyType();
             for (int i=0;i<txnSet.getSize();++i) {
@@ -176,11 +181,8 @@ public class AccountBalancesWindow
             }
             double rate = currencytype.getRawRateByDateInt(date);
 
-            myDebug2("positions %d rate %f div %f long div %d round div %d", positions, rate, positions/rate,
-                    (long)(positions/rate), Math.round(positions/rate));
-            if (Math.round(positions/rate) != (long)(positions/rate)) {
-                myDebug2("debug: mismatch");
-            }
+            myDebug2("positions %d rate %f div %f long div %d round div %d mismatch: %s", positions, rate, positions/rate,
+                    (long)(positions/rate), Math.round(positions/rate), (Math.round(positions/rate) != (long)(positions/rate) ? "yes" : "no") );
             long balance = Math.round(positions/rate);
             balance += getAccount().getStartBalance();
             long startBalance = getAccount().getStartBalance();
@@ -188,17 +190,22 @@ public class AccountBalancesWindow
             if ( startBalance != 0) {
                 myPrint("start balance is not zero: ");
             }
-            myDebug("account on %d positions %d rate %f value %d", date, positions, rate, balance);
+            // myDebug1("account on %d positions %d rate %f value %d", date, positions, rate, balance);
             return balance;
         }
 
-        public long getCashBalance(int date) {
+        public long getBalance(int date) {
+            // myDebug1("entered getBalance account %s date %d", getAccountName() ,date);
+            if (account.getAccountType() == Account.AccountType.SECURITY) {
+                return getBalanceForSecurity(date);
+            }
+
             if (lastIndex >=0 && txnSet.getTxn(lastIndex).getDateInt() > date )
             {
+                myDebug1("restarting dates");
                 lastIndex = -1;
                 lastBalance = account.getStartBalance();
             }
-            myDebug("inital last index %d last balance %d", lastIndex, lastBalance);
 
             for (int i = lastIndex; i<txnSet.getSize(); ++i) {
                 if (i+1 == txnSet.getSize() || txnSet.getTxn(i+1).getDateInt() > date) {
@@ -213,51 +220,53 @@ public class AccountBalancesWindow
             return lastBalance;
         }
 
-        public long getBalance(int date) {
-            if (account.getAccountType() == Account.ACCOUNT_TYPE_SECURITY) {
+        public long getRecursiveBalance(int date) {
+            if (account.getAccountType() == Account.AccountType.SECURITY) {
                 return getBalanceForSecurity(date);
             }
 
-            long balance = getCashBalance(date);
-            for (int i=0; i<subAccounts.size(); ++i) {
-                long subBalance = subAccounts.get(i).getBalance(date);
+            long balance = getBalance(date);
+            for (MyAccount subAccount : subAccounts) {
+                long subBalance = subAccount.getRecursiveBalance(date);
                 balance += subBalance;
                 myDebug2("%s added sub account %s sub balance %d new total balance %d",
-                        account.getAccountName(), subAccounts.get(i).getAccountName(), subBalance, balance);
+                        account.getAccountName(), subAccount.getAccountName(), subBalance, balance);
             }
-            myDebug2("returning balance with sub accounts =%d", balance);
+            myDebug2("returning balance with sub accounts = %d", balance);
             return balance;
         }
     }
 
-    public java.util.List<MyAccount> getAccounts(int level)
-    {
-           return getAccounts(level, extension.getUnprotectedContext().getRootAccount());
+    public java.util.List<MyAccount> getAllAccounts() {
+        boolean refresh = false;
+        if (allAccounts == null)
+        {
+            refresh = true;
+            lastTransactionsSize = extension.getUnprotectedContext().getCurrentAccountBook().getTransactionSet().getTransactionCount();
+        }
+        else
+        {
+            long size = extension.getUnprotectedContext().getCurrentAccountBook().getTransactionSet().getTransactionCount();
+            if (size != lastTransactionsSize)
+            {
+                refresh = true;
+                lastTransactionsSize = size;
+            }
+        }
+        if (refresh)
+            allAccounts =  getAccounts(extension.getUnprotectedContext().getRootAccount());
+        return allAccounts;
     }
 
-    public java.util.List<MyAccount> getAccounts(int level, Account parentAccount) {
+    public java.util.List<MyAccount> getAccounts(Account topAccount) {
         java.util.List<MyAccount> resultAccounts = new ArrayList<MyAccount>();
+        resultAccounts.add(new MyAccount(topAccount));
+        for (int i = 0; i < topAccount.getSubAccountCount(); i++) {
+            Account acct = topAccount.getSubAccount(i);
+            if (isMainAccount(acct)) {
 
-        if (parentAccount.getSubAccountCount() == 0) {
-            if (isMainAccount(parentAccount)) {
-                resultAccounts.add(new MyAccount(parentAccount));
+                resultAccounts.addAll(getAccounts(acct));
             }
-        } else {
-            for (int i = 0; i < parentAccount.getSubAccountCount(); i++) {
-                Account acct = parentAccount.getSubAccount(i);
-                if (isMainAccount(acct)) {
-                    if (level == 1) {
-                        resultAccounts.add(new MyAccount(acct));
-                    }
-                    else
-                    {
-                        assert level > 1;
-                        resultAccounts.addAll(getAccounts(level-1, acct));
-
-                    }
-                }
-            }
-            resultAccounts.add(new MyAccount(parentAccount,true));
         }
         return resultAccounts;
     }
@@ -289,19 +298,20 @@ public class AccountBalancesWindow
 
     public NumberRenderer d_numberRenderer = new NumberRenderer();
 
-    public void displayData() {
+    private void displayData() {
+        myDebug1("entered displayDate()");
 
-        DefaultTableModel dm = (DefaultTableModel)dataTable.getModel();
-        dm.setRowCount(0);
-        dm.setColumnCount(0);
+        DefaultTableModel tableModel = (DefaultTableModel)dataTable.getModel();
+        tableModel.setRowCount(0);
+        tableModel.setColumnCount(0);
 
-        boolean subs = subCheckBox.isSelected();
+        boolean includeSubs = subCheckBox.isSelected();
 
         Vector<String> vh = new Vector<String>();
         vh.add("Account Name");
         vh.add("Account Type");
         int freezeColumns = 2;
-        if (subs)
+        if (includeSubs)
         {
             vh.add("Parent");
             freezeColumns = 3;
@@ -310,13 +320,13 @@ public class AccountBalancesWindow
             vh.add(MyUtils.dateIntToString(date));
         }
         for(String name : vh) {
-            dm.addColumn(name);
+            tableModel.addColumn(name);
         }
         if (headersCheckBox.isSelected())
-            dm.addRow(vh);
+            tableModel.addRow(vh);
 
         d_numberRenderer.setShowCents(centsCheckBox.isSelected());
-        for(int i=0;i<dm.getColumnCount();++i) {
+        for(int i=0;i< tableModel.getColumnCount();++i) {
             if (i>=freezeColumns)
             {
                 d_numberRenderer.setHorizontalAlignment(DefaultTableCellRenderer.RIGHT);
@@ -326,69 +336,86 @@ public class AccountBalancesWindow
         }
         dataTable.getColumnModel().getColumn(0).setMinWidth(150);
         dataTable.getColumnModel().getColumn(1).setMinWidth(80);
-        if (subs)
+        if (includeSubs)
             dataTable.getColumnModel().getColumn(2).setMinWidth(80);
         Vector<Long> totals = new Vector<Long>();
-        for (int i=0; i<displayedData.dates.size();++i)
-            totals.add(0L);
+        for (Integer ignored : displayedData.dates) totals.add(0L);
         for(int i=0; i<displayedData.myAccounts.size(); ++i) {
             MyAccount accnt = displayedData.myAccounts.get(i);
-            java.util.List<Long> rowBalances = new ArrayList<Long>();
-            boolean hasBalance = false;
-            for (int j=0; j<displayedData.dates.size(); ++j) {
-                Long balance = (Long)displayedData.balances.getValueAt(i,j);
-                rowBalances.add(balance);
-                if (balance != 0)
-                    hasBalance = true;
-            }
-            if (hasBalance) {
-                if (diffsCheckBox.isSelected()) {
-                    for (int k=rowBalances.size()-1; k>0; --k) {
-                        rowBalances.set(k, rowBalances.get(k) - rowBalances.get(k-1));
+            if (includeSubs && accnt.getDepth()==2 || accnt.getDepth()==1) {
+                java.util.List<Long> rowBalances = new ArrayList<Long>();
+                boolean hasBalance = false;
+                for (int j = 0; j < displayedData.dates.size(); ++j) {
+                    // Long balance = (Long) displayedData.balances.getValueAt(i, j);
+                    Long balance;
+                    int date = displayedData.dates.get(j);
+                    if (includeSubs)
+                    {
+                        balance = (Long) displayedData.balances.getValueAt(i, j);
                     }
+                    else
+                    {
+                        balance = (Long) displayedData.recursiveBalances.getValueAt(i, j);
+                    }
+                    rowBalances.add(balance);
+                    if (balance != 0)
+                        hasBalance = true;
                 }
-                Vector<Object> v = new Vector<Object>();
-                v.add(accnt.getAccountName());
-                v.add(accnt.getAccountTypeName());
-                if (subs)
-                    v.add(accnt.getAccount().getParentAccount().getAccountName());
-                for(int k=0; k<rowBalances.size(); ++k) {
-                    long balance = rowBalances.get(k);
-                    totals.set(k, totals.get(k) + balance);
-                    v.add((double)balance/100);
+                if (hasBalance) {
+                    if (diffsCheckBox.isSelected()) {
+                        for (int k = rowBalances.size() - 1; k > 0; --k) {
+                            rowBalances.set(k, rowBalances.get(k) - rowBalances.get(k - 1));
+                        }
+                    }
+                    Vector<Object> v = new Vector<Object>();
+                    v.add(accnt.getAccountName());
+                    v.add(accnt.getAccountTypeName());
+                    if (includeSubs)
+                        v.add(accnt.getParentName());
+                    for (int k = 0; k < rowBalances.size(); ++k) {
+                        long balance = rowBalances.get(k);
+                        totals.set(k, totals.get(k) + balance);
+                        v.add((double) balance / 100);
+                    }
+                    tableModel.addRow(v);
                 }
-                dm.addRow(v);
             }
         }
         Vector<Object> hv = new Vector<Object>();
         hv.add("total");
         hv.add("TOTAL");
-        if (subs)
+        if (includeSubs)
             hv.add("");
         for (long total: totals) {
             hv.add((double)total/100);
         }
-        dm.addRow(hv);
+        tableModel.addRow(hv);
     }
 
-    public static void getBalances(AccountsData accountsData) {
-        DefaultTableModel result = accountsData.balances;
+    public  void getBalances(AccountsData accountsData) {
+        DefaultTableModel balances = accountsData.balances;
+        DefaultTableModel recursiveBalances = accountsData.recursiveBalances;
         java.util.List<Integer> dates = accountsData.dates;
         java.util.List<MyAccount> accounts = accountsData.myAccounts;
-        result.setRowCount(0);
-        result.setColumnCount(dates.size());
-
-        for(MyAccount account: accounts) {
+        balances.setRowCount(0);
+        balances.setColumnCount(dates.size());
+        recursiveBalances.setRowCount(0);
+        recursiveBalances.setColumnCount(dates.size());
+        for (MyAccount account : accounts) {
             Vector<Long> rowBalances = new Vector<Long>();
-            for(Integer date : dates) {
+            Vector<Long> rowRecursiveBalances = new Vector<Long>();
+            for (Integer date : dates) {
                 rowBalances.add(account.getBalance(date));
+                rowRecursiveBalances.add(account.getRecursiveBalance(date));
             }
-            result.addRow(rowBalances);
+            balances.addRow(rowBalances);
+            recursiveBalances.addRow(rowRecursiveBalances);
         }
     }
 
     ItemListener itemsListener = new ItemListener() {
         public void itemStateChanged(ItemEvent e) {
+            myDebug1("entered listener of " + e.toString());
             displayData();
         }
     };
@@ -419,16 +446,24 @@ public class AccountBalancesWindow
                 new ActionListener() {
                     @Override
                     public void actionPerformed(ActionEvent actionEvent) {
+                        myDebug1("entered actionListener of generate button");
                         dm.setColumnCount(0);
                         dm.setRowCount(0);
                         try {
+                            topContainer.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
                             displayedData.clear();
                             displayedData.dates = periodSelector.getDates();
-                            displayedData.myAccounts = getAccounts(subCheckBox.isSelected() ? 2 : 1);
+                            displayedData.myAccounts = getAllAccounts();
+                            myDebug1("calling displayedDate");
                             getBalances(displayedData);
+                            myDebug1("after calling displayedDate");
                             displayData();
                         } catch (ParseException e) {
                             e.printStackTrace();
+                        }
+                        finally {
+                            topContainer.setCursor(Cursor.getDefaultCursor());
+                            myDebug1("exiting actionListener of generate button");
                         }
                     }
                 }
@@ -443,6 +478,7 @@ public class AccountBalancesWindow
         topRow.add(diffsCheckBox);
 
         subCheckBox = new JCheckBox("subs");
+        subCheckBox.addItemListener(itemsListener);
         subCheckBox.setHorizontalTextPosition(SwingConstants.LEFT);
         topRow.add(subCheckBox);
 

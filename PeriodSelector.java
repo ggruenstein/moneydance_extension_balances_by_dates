@@ -1,5 +1,8 @@
 package com.moneydance.modules.features.mynetworth;
 
+import com.moneydance.awt.DateField;
+import com.moneydance.awt.JDateField;
+
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
@@ -8,8 +11,10 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
+import java.text.DateFormat;
 import java.text.DecimalFormat;
 import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
 
@@ -22,13 +27,12 @@ import java.util.List;
  */
 public class PeriodSelector extends JPanel {
 
-    int totalStartDate;
-    int totalEndDate;
-
     JComboBox dateRangeCombo;
     JComboBox groupByCombo;
     JTextField startDateText = new JTextField();
     JTextField endDateText = new JTextField();
+    // TextField startDateText = new DateField(new java.text.SimpleDateFormat());
+    // TextField endDateText = new DateField(new java.text.SimpleDateFormat());
 
     java.util.List<Integer> getDates() throws ParseException {
         java.util.List<Integer> dates = new ArrayList<Integer>();
@@ -103,7 +107,7 @@ public class PeriodSelector extends JPanel {
         return dates;
     }
 
-    static void freezeSize(JComponent c) {
+    static void freezeSize(Component c) {
         c.setMaximumSize(c.getPreferredSize());
 //        javax.swing.border.Border blackline = BorderFactory.createLineBorder(Color.black);
 //        c.setBorder(blackline);
@@ -119,7 +123,9 @@ public class PeriodSelector extends JPanel {
     }
 
     static Calendar stringToCalendar(String s) throws ParseException {
-        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("MM/dd/yyyy");
+        // java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("MM/dd/yyyy");
+        DateFormat f = DateFormat.getDateInstance(DateFormat.SHORT);
+        f.setLenient(true);
         Calendar cal = Calendar.getInstance();
         Date date = f.parse(s);
         cal.setTime(date);
@@ -227,7 +233,6 @@ public class PeriodSelector extends JPanel {
                 "Custom dates"};
         dateRangeCombo = new JComboBox(dateRangeStrings);
         dateRangeCombo.addItemListener(dataRangeComboListener);
-        dateRangeCombo.setSelectedIndex(6);
         add(dateRangeCombo);
         freezeSize(dateRangeCombo);
 
@@ -242,7 +247,8 @@ public class PeriodSelector extends JPanel {
         JLabel startDateLabel = new JLabel("start: ");
         add(startDateLabel);
         freezeSize(startDateLabel);
-        startDateText.setColumns(10);
+        // startDateText.setColumns(10);
+        startDateText.setText("22/12/2016"); // sets width
         add(startDateText);
         freezeSize(startDateText);
 
@@ -250,10 +256,12 @@ public class PeriodSelector extends JPanel {
         JLabel endDateLabel = new JLabel("end: ");
         add(endDateLabel);
         freezeSize(endDateLabel);
-        endDateText.setColumns(10);
-        endDateText.setMaximumSize( endDateText.getPreferredSize() );
+        //zzz endDateText.setColumns(10);
+        endDateText.setText("22/12/2016"); // sets width
         add(endDateText);
         freezeSize(endDateText);
+
+        dateRangeCombo.setSelectedIndex(6);     // done at end to force change of dates
     }
 
     static class NumberRenderer extends DefaultTableCellRenderer {

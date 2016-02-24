@@ -1,5 +1,7 @@
 package com.moneydance.modules.features.mynetworth;
 
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 
 /**
@@ -26,7 +28,8 @@ public class MyUtils {
     }
     static String calToString(Calendar cal)
     {
-        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("MM/dd/yyyy");
+        // java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("MM/dd/yyyy");
+        DateFormat f = SimpleDateFormat.getDateInstance(DateFormat.SHORT);
         return f.format(cal.getTime());
     }
 

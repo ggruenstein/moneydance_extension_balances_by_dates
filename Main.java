@@ -1,14 +1,11 @@
-package com.moneydance.modules.features.mynetworth ;
+/************************************************************\
+ *       Copyright (C) 2001 Appgen Personal Software        *
+\************************************************************/
+
+package com.moneydance.modules.features.mynetworth;
 
 import com.moneydance.apps.md.controller.FeatureModule;
 import com.moneydance.apps.md.controller.FeatureModuleContext;
-
-
-//import com.moneydance.apps.md.controller.io.FileOpeningContext;
-//import com.moneydance.apps.md.controller.io.FileUtils;
-
-
-//import com.moneydance.security.SecretKeyCallback;
 
 import java.io.*;
 import java.awt.*;
@@ -20,7 +17,7 @@ import java.awt.*;
 public class Main
   extends FeatureModule
 {
-  private AccountBalancesWindow accountBalanceWindow = null;
+  private AccountBalancesWindow accountBalancesWindow = null;
 
   public void init() {
     // the first thing we will do is register this module to be invoked
@@ -28,7 +25,7 @@ public class Main
     FeatureModuleContext context = getContext();
     try {
       context.registerFeature(this, "showconsole",
-        getIcon("accountlist"),
+        getIcon(""),
         getName());
     }
     catch (Exception e) {
@@ -56,8 +53,8 @@ public class Main
     } catch (Throwable e) { }
     return null;
   }
-
-  /** Process an invocation of this module with the given URI */
+  
+  /** Process an invokation of this module with the given URI */
   public void invoke(String uri) {
     String command = uri;
     String parameters = "";
@@ -74,37 +71,38 @@ public class Main
     }
 
     if(command.equals("showconsole")) {
-      runExtension();
+        showConsole();
     }    
   }
 
   public String getName() {
     return "Balances By Dates";
+
   }
 
-  private synchronized void runExtension() {
-    if(accountBalanceWindow ==null) {
-      accountBalanceWindow = new AccountBalancesWindow(this);
-      accountBalanceWindow.setVisible(true);
+   private synchronized void showConsole() {
+        if(accountBalancesWindow ==null) {
+            accountBalancesWindow = new AccountBalancesWindow(this);
+            accountBalancesWindow.setVisible(true);
+        }
+        else {
+            accountBalancesWindow.setVisible(true);
+            accountBalancesWindow.toFront();
+            accountBalancesWindow.requestFocus();
+        }
     }
-    else {
-      accountBalanceWindow.setVisible(true);
-      accountBalanceWindow.toFront();
-      accountBalanceWindow.requestFocus();
-    }
-  }
-  
-  FeatureModuleContext getUnprotectedContext() {
-    return getContext();
+
+   FeatureModuleContext getUnprotectedContext() {
+        return getContext();
   }
 
   synchronized void closeConsole() {
-    if(accountBalanceWindow !=null) {
-      accountBalanceWindow.goAway();
-      accountBalanceWindow = null;
-      System.gc();
+        if(accountBalancesWindow !=null) {
+            accountBalancesWindow.goAway();
+            accountBalancesWindow = null;
+            System.gc();
+        }
     }
-  }
 }
 
 

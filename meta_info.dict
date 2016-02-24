@@ -1,0 +1,9 @@
+{
+  "vendor" = "Gad Gruenstein"
+  "module_build" = "1"
+  "minbuild" = "1000"
+  "vendor.url" = "http://your.url.here/"
+  "module_name" = "mynetworth"
+  "module_desc" = "<html><body><title>Balances by Dates</title><p>Display account balances for several dates.</p></body></html>"
+  "desc" = "Display account balances for several dates in tabular format that can be copied to Excel."
+}
